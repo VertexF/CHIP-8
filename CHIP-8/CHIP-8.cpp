@@ -32,6 +32,18 @@ struct Chip8
 				*p++ = (n >> a) & 0xF;
 		}
 	}
+
+	void ExecIns() 
+	{
+		//Here we are reading in the 2 byte opcode from memory and advanced the program counter.
+		unsigned opcode = Mem[PC & 0xFFF] * 0x100 + Mem[(PC + 1) & 0xFFF]; PC += 2;
+		//Extract the bit-field from the opcode.
+		unsigned p = (opcode >> 0) & 0xF;
+		unsigned y = (opcode >> 4) & 0xF;
+		unsigned x = (opcode >> 8) & 0xF;
+		unsigned kk = (opcode >> 0) & 0xFF;
+		unsigned nnn = (opcode >> 0) & 0xFFF;
+	}
 };
 
 int main(int argv, char** argc)
