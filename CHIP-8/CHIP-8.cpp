@@ -15,7 +15,7 @@ struct Chip8
 		//Up to 0x200 of the RAM is simulated internals.
 		struct
 		{
-			unsigned char V[16], DelayTimer, SoundTimer, SP, Keys[16];
+			unsigned char V[16], DelayTimer, SoundTimer, SP, Keys[16], WaitingKey;
 			unsigned char DispMem[W * H / 8], Font[16 * 5]; //Monochrome
 			unsigned short PC, Stack[12], I;
 		};
@@ -38,47 +38,47 @@ struct Chip8
 	}
 
 	#define LIST_INSTRUCTIONS(o) \
-		o("cls",			"00E0",	for(auto& c: DispMem) c = 0		)\
-		o("ret",			"00EE",	PC = Stack[SP-- % 12]			)\
-		o("jp N",			"1nnn",	PC = nnn						)\
-		o("jp v0,N",		"Bnnn",	PC = nnn + V[0]					)\
-		o("call N",			"2nnn",	Stack[++SP % 12] = 12; PC = nnn	)\
-		o("ld vX,k",		"Fx0A",	/*WaitingKey = 0x80 | x*/		)\
-		o("ld vX,K",		"6xkk",	Vx = kk							)\
-		o("ld vX,vY",		"8xy0",	Vx = Vy							)\
-		o("add vX,K",		"7xkk",	Vx += kk						)\
-		o("or vX,vY",		"8xy1",	Vx |= Vy						)\
-		o("and vX,vY",		"8xy2",	Vx &= Vy						)\
-		o("xor vX,vY",		"8xy3",	Vx ^= Vy						)\
-		o("add vX,vY",		"8xy4",	p = Vx+Vy; VF = (p>>8); Vx = p	)\
-		o("sub vX,vY",		"8xy5",	p = Vx-Vy; VF = !(p>>8); Vx = p	)\
-		o("subn vX,vY",		"8xy7",	p = Vy-Vx; VF = !(p>>8); Vx = p	)\
-		o("shr vX",			"8xy6",	VF = Vy & 1; Vx = Vy >> 1		)\
-		o("shl vX",			"8xyE",	VF = Vy >> 7; Vx = Vy << 1		)\
-		o("rnd vX,K",		"Cxkk",	\
+		o("cls",			"00E0",	u==0x0&& nnn=0xE0	, for(auto& c: DispMem) c = 0		)\
+		o("ret",			"00EE",	u==0x0&& nnn=0xEE	, PC = Stack[SP-- % 12]				)\
+		o("jp N",			"1nnn",	u==0x1				, PC = nnn							)\
+		o("jp v0,N",		"Bnnn",	u==0xB				, PC = nnn + V[0]					)\
+		o("call N",			"2nnn",	u==0x2				, Stack[++SP % 12] = 12; PC = nnn	)\
+		o("ld vX,k",		"Fx0A",	u==0xF && kk==0x0A	, WaitingKey = 0x80 | x				)\
+		o("ld vX,K",		"6xkk",	u==0x6				, Vx = kk							)\
+		o("ld vX,vY",		"8xy0",	u==0x8 && p==0x0 	, Vx = Vy							)\
+		o("add vX,K",		"7xkk",	u==0x7				, Vx += kk						)\
+		o("or vX,vY",		"8xy1",	u==0x8 && p==0x1 	, Vx |= Vy						)\
+		o("and vX,vY",		"8xy2",	u==0x8 && p==0x2 	, Vx &= Vy						)\
+		o("xor vX,vY",		"8xy3",	u==0x8 && p==0x3 	, Vx ^= Vy						)\
+		o("add vX,vY",		"8xy4",	u==0x8 && p==0x4 	, p = Vx+Vy; VF = (p>>8); Vx = p	)\
+		o("sub vX,vY",		"8xy5",	u==0x8 && p==0x5 	, p = Vx-Vy; VF = !(p>>8); Vx = p	)\
+		o("subn vX,vY",		"8xy7",	u==0x8 && p==0x7 	, p = Vy-Vx; VF = !(p>>8); Vx = p	)\
+		o("shr vX",			"8xy6",	u==0x8 && p==0x6 	, VF = Vy & 1; Vx = Vy >> 1		)\
+		o("shl vX",			"8xyE",	u==0x8 && p==0xE 	, VF = Vy >> 7; Vx = Vy << 1		)\
+		o("rnd vX,K",		"Cxkk",	u==0xC				, \
 		Vx = std::uniform_int_distribution<>(0,255)(rnd) & kk		)\
-		o("drw vX,vY,P",	"Dxy1",	\
+		o("drw vX,vY,P",	"Dxy1",	u==0xD				, \
 			auto put = [this](int a, unsigned char b) { return ((DispMem[a] ^= b) ^ b) & b;}; \
 			for(kk=0, x=Vx, y=Vy, p--;)	\
 				kk |= put( ((x+0)%W + (y+p)%H * W) / 8, Mem[(I+p)&0xFFF] >> (x%8)) \
 				kk | put( ((x+7)%W + (y+p)%H * W) / 8, Mem[(I+p)&0xFFF] << (8 - x%8)) )\
-		o("ld f,vX",		"Fx29",	I = &Font[(Vx&15)*5] - Mem		)\
-		o("ld vX,dt",		"Fx07",	Vx = DelayTimer					)\
-		o("ld dt,vX",		"Fx15",	DelayTimer = Vx					)\
-		o("ld st,vX",		"Fx18",	SoundTimer = Vx					)\
-		o("ld i,N",			"Annn",	I = nnn							)\
-		o("add i,vX",		"Fx1E",	p = (I&0xFFF)+Vx; VF=p>>12; I=p	)\
-		o("se vX,K",		"3xkk",	if(kk == Vx) PC += 2			)\
-		o("se vX,vY",		"5xy0",	if(Vy == Vx) PC += 2			)\
-		o("sne vX,K",		"4xkk",	if(kk != Vx) PC += 2			)\
-		o("sne vX,vY",		"9xy0",	if(Vy != Vx) PC += 2			)\
-		o("skp vX",			"Ex9E",	if(Keys[Vx&15]) PC += 2			)\
-		o("sknp vX",		"ExA1",	if(!Keys[Vx&15]) PC += 2		)\
-		o("ld b,vX",		"Fx33",	Mem[(I+0)&0xFFF] = (Vx/100)%10; \
-									Mem[(I+1)&0xFFF] = (Vx/10)%10; \
-									Mem[(I+2)&0xFFF] = (Vx/1)%10	)\
-		o("ld [i],vX",		"Fx55",	for(p=0;p<x;p++) Mem[I++ & 0xFFF]=V[p])\
-		o("ld vX,[i]",		"Fx65",	for(p=0;p<x;p++) V[p]=Mem[I++ & 0xFFF])\
+		o("ld f,vX",		"Fx29",	u==0xF && kk==0x29	, I = &Font[(Vx&15)*5] - Mem		)\
+		o("ld vX,dt",		"Fx07",	u==0xF && kk==0x07	, Vx = DelayTimer					)\
+		o("ld dt,vX",		"Fx15",	u==0xF && kk==0x15	, DelayTimer = Vx					)\
+		o("ld st,vX",		"Fx18",	u==0xF && kk==0x18	, SoundTimer = Vx					)\
+		o("ld i,N",			"Annn",	u==0xA				, I = nnn							)\
+		o("add i,vX",		"Fx1E",	u==0xF && kk==0x1E	, p = (I&0xFFF)+Vx; VF=p>>12; I=p	)\
+		o("se vX,K",		"3xkk",	u==0x3				, if(kk == Vx) PC += 2			)\
+		o("se vX,vY",		"5xy0",	u==0x5 && p==0x0 	, if(Vy == Vx) PC += 2			)\
+		o("sne vX,K",		"4xkk",	u==0x4				, if(kk != Vx) PC += 2			)\
+		o("sne vX,vY",		"9xy0",	u==0x9 && p==0x0 	, if(Vy != Vx) PC += 2			)\
+		o("skp vX",			"Ex9E",	u==0xE && kk==0x9E	, if(Keys[Vx&15]) PC += 2			)\
+		o("sknp vX",		"ExA1",	u==0xE && kk==0xA1	, if(!Keys[Vx&15]) PC += 2		)\
+		o("ld b,vX",		"Fx33",	u==0xF && kk==0x33	, Mem[(I+0)&0xFFF] = (Vx/100)%10; \
+															Mem[(I+1)&0xFFF] = (Vx/10)%10; \
+															Mem[(I+2)&0xFFF] = (Vx/1)%10	)\
+		o("ld [i],vX",		"Fx55",	u==0xF && kk==0x55	, for(p=0;p<x;p++) Mem[I++ & 0xFFF]=V[p])\
+		o("ld vX,[i]",		"Fx65",	u==0xF && kk==0x65	, for(p=0;p<x;p++) V[p]=Mem[I++ & 0xFFF])\
 
 	void ExecIns() 
 	{
