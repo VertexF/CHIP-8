@@ -19,6 +19,19 @@ struct Chip8
 			unsigned short PC, Stack[12], I;
 		};
 	};
+
+	//The initialisation
+	Chip8()
+	{
+		//Here we are installing the Font.
+		auto *p = Font;
+		for (unsigned n: { 0xF999F, 0x26227, 0xF1F8F, 0xF1F1F, 0x99F11, 0xF8F1F, 0xF8F9F, 0xF1244,
+							0xF9F9F, 0xF9F1F, 0xF9F99, 0xE9E9E, 0xF888F, 0xE999E, 0xF8F8F, 0xF8F88}) 
+		{
+			for (int a = 16; a >= 0; a -= 4) 
+				*p++ = (n >> a) & 0xF;
+		}
+	}
 };
 
 int main(int argv, char** argc)
