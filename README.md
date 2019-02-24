@@ -4,5 +4,5 @@ This is a CHIP-8 interpreter wrote in more modern C++. This was simplely a littl
 
 
 Credits
-  Joel/Bistket for teaching me how it all works: https://www.youtube.com/watch?v=rpLoS7B6T94
+  Joel/Bisqwit for teaching me how it all works: https://www.youtube.com/watch?v=rpLoS7B6T94
   David Winter for writing the original documentation and other improving it: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
