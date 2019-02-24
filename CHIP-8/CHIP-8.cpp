@@ -153,6 +153,21 @@ int main(int argc, char** argv)
 		//Handle Input
 		for (SDL_Event ev; SDL_PollEvent(&ev); )
 		{
+			switch (ev.type) 
+			{
+			case SDL_QUIT: interrupted = true; break;
+			case SDL_KEYDOWN:
+			case SDL_KEYUP:
+				auto i = keymap.find(ev.key.keysym.sym);
+				if (i == keymap.end()) break;
+				if (i->second == -1) { interrupted = true; break; }
+				cpu.Keys[i->second] = ev.type == SDL_KEYDOWN;
+				if (ev.type==SDL_KEYDOWN && (cpu.WaitingKey & 0x80)) 
+				{
+					cpu.WaitingKey &= 0x7F;
+					cpu.V[cpu.WaitingKey] = i->second;
+				}
+			}
 		}
 		//Render graphics
 		Uint32 pixels[W*H]; cpu.RenderTo(pixels);
