@@ -16,12 +16,12 @@ struct Chip8
 	union
 	{
 		//Chip-8 has 0x1000 of RAM.
-		unsigned char Mem[0x1000] = { 0 };
+		unsigned char Mem[0x1000] = { 0x12,0x00 };
 		//Up to 0x200 of the RAM is simulated internals.
 		struct
 		{
 			unsigned char V[16], DelayTimer, SoundTimer, SP, Keys[16], WaitingKey;
-			unsigned char DispMem[W * H / 8], Font[16 * 5]; //Monochrome
+			unsigned char DispMem[W*H / 8], Font[16 * 5]; // monochrome bitmaps
 			unsigned short PC, Stack[12], I;
 		};
 	};
@@ -47,7 +47,7 @@ struct Chip8
 		o("ret",			"00EE",	u==0x0&& nnn==0xEE	, PC = Stack[SP-- % 12]				)\
 		o("jp N",			"1nnn",	u==0x1				, PC = nnn							)\
 		o("jp v0,N",		"Bnnn",	u==0xB				, PC = nnn + V[0]					)\
-		o("call N",			"2nnn",	u==0x2				, Stack[++SP % 12] = 12; PC = nnn	)\
+		o("call N",			"2nnn",	u==0x2				, Stack[++SP % 12] = PC; PC = nnn	)\
 		o("ld vX,k",		"Fx0A",	u==0xF && kk==0x0A	, WaitingKey = 0x80 | x				)\
 		o("ld vX,K",		"6xkk",	u==0x6				, Vx = kk							)\
 		o("ld vX,vY",		"8xy0",	u==0x8 && p==0x0 	, Vx = Vy							)\
@@ -107,8 +107,16 @@ struct Chip8
 
 	void Load(const char* filepath, unsigned pos = 0x200) 
 	{
-		for (std::ifstream f(filepath, std::ios::binary); f.good();)
-			Mem[pos++ & 0xFFF] = f.get();
+		std::ifstream f(filepath, std::ios::binary);
+		if (f.is_open()) 
+		{
+			for (f; f.good();)
+				Mem[pos++ & 0xFFF] = f.get();
+		}
+		else 
+		{
+			std::cout << "could not open file" << std::endl;
+		}
 	}
 
 	void RenderTo(Uint32 *pixels) 
@@ -118,18 +126,15 @@ struct Chip8
 	}
 };
 
+static std::deque<std::pair<unsigned /*samples*/, bool /*volume*/>> AudioQueue;
+
 int main(int argc, char** argv)
 {
-	if(SDL_Init(SDL_INIT_EVERYTHING) < 0)
-	{
-		std::cerr << "SDL failed to start" << std::endl;
-	}
-
 	Chip8 cpu;
-	cpu.Load(argv[1]);
+	cpu.Load("starfield.bin");
 
 	// Create a screen.
-	SDL_Window* window = SDL_CreateWindow(argv[1], SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, W * 4, H * 6, SDL_WINDOW_RESIZABLE);
+	SDL_Window* window = SDL_CreateWindow("hello", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, W * 4, H * 6, SDL_WINDOW_RESIZABLE);
 	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
 	SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, W, H);
 
@@ -140,13 +145,35 @@ int main(int argc, char** argv)
 		{SDLK_q, 0x4}, {SDLK_w, 0x5}, {SDLK_e, 0x6}, {SDLK_r, 0xD},
 		{SDLK_a, 0x7}, {SDLK_s, 0x8}, {SDLK_d, 0x9}, {SDLK_f, 0xE},
 		{SDLK_z, 0xA}, {SDLK_x, 0x0}, {SDLK_c, 0xB}, {SDLK_v, 0xF},
-		{SDLK_5, 0x5}, {SDLK_6, 0x6}, {SDLK_7, 0x7}, 
-		{SDLK_1, 0x1}, {SDLK_8, 0x8}, {SDLK_9, 0x9}, {SDLK_ESCAPE, -1}
+		{SDLK_5, 0x5}, {SDLK_6, 0x6}, {SDLK_7, 0x7},
+		{SDLK_8, 0x8}, {SDLK_9, 0x9}, {SDLK_0, 0x0}, {SDLK_ESCAPE,-1}
 	};
+
+	//Setup SDL Audio
+	SDL_AudioSpec spec, obtained;
+	spec.freq = 44100;
+	spec.format = AUDIO_S16SYS;
+	spec.channels = 2;
+	spec.samples = spec.freq / 20; // 0.05 latency 
+	spec.callback = [](void*, Uint8* stream, int len)
+	{
+		//Generate a square wave
+		short* target = (short*)stream;
+		while (len > 0 && !AudioQueue.empty()) 
+		{
+			auto &data = AudioQueue.front();
+			for (; len && data.first; target += 2, len -= 4, --data.first)
+				target[0] = target[1] = data.second * 300 * ((len & 128) - 64);
+			if (!data.first) AudioQueue.pop_front();
+		}
+	};
+	SDL_OpenAudio(&spec, &obtained);
+	SDL_PauseAudio(0);
+
 	//This is how many instructions it can read per-frame.
-	unsigned insns_per_frame = 5000;
+	unsigned insns_per_frame = 50000; // 50 for most chip8 programs
 	unsigned max_consecutive_insns = 0;
-	int frameDone = 0;
+	int framesDone = 0;
 	bool interrupted = false;
 
 	auto start = std::chrono::system_clock::now();
@@ -157,7 +184,7 @@ int main(int argc, char** argv)
 			1: for the max_consecutive_insus
 			2: the program is waiting for a key press.
 		*/
-		for (unsigned a=0; a < max_consecutive_insns && !(cpu.WaitingKey & 0x80); a++)
+		for (unsigned a = 0; a < max_consecutive_insns && !(cpu.WaitingKey & 0x80); ++a)
 			cpu.ExecIns();
 		//Handle Input
 		for (SDL_Event ev; SDL_PollEvent(&ev); )
@@ -181,23 +208,28 @@ int main(int argc, char** argv)
 		//Here we are checking to see how many pixels should of been rendered so far.
 		auto cur = std::chrono::system_clock::now();
 		std::chrono::duration<double> elapsed_seconds = cur - start;
-		int frames = int(elapsed_seconds.count() * 60) - frameDone;
-		if (frames < 0)
+		int frames = int(elapsed_seconds.count() * 60) - framesDone;
+		if (frames > 0)
 		{
-			frameDone += frames;
+			framesDone += frames;
 			//Update the time registers
 			int st = std::min(frames, cpu.SoundTimer + 0); cpu.SoundTimer -= st;
 			int dt = std::min(frames, cpu.DelayTimer + 0); cpu.DelayTimer -= dt;
+			//Render audio
+			SDL_LockAudio();
+			AudioQueue.emplace_back(obtained.freq*(st) / 60, true);
+			AudioQueue.emplace_back(obtained.freq*(frames - st) / 60, false);
+			SDL_UnlockAudio();
 			//Render graphics
 			Uint32 pixels[W*H]; cpu.RenderTo(pixels);
 			SDL_UpdateTexture(texture, nullptr, pixels, 4 * W);
 			SDL_RenderCopy(renderer, texture, nullptr, nullptr);
 			SDL_RenderPresent(renderer);
 		}
-		//If for some reason the cpu is still waiting for a key press or a frame we just comsome the CPU timer by 1
-		if ((cpu.WaitingKey & 0x80) || !frames) SDL_Delay(1000 / 60);
 		// Adjust the instruction count to compensate for our rendering speed
 		max_consecutive_insns = std::max(frames, 1) * insns_per_frame;
+		//If for some reason the cpu is still waiting for a key press or a frame we just comsome the CPU timer by 1
+		if ((cpu.WaitingKey & 0x80) || !frames) SDL_Delay(1000 / 60);
 	}
 
 	SDL_Quit();
