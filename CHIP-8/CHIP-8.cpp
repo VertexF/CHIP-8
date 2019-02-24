@@ -110,6 +110,12 @@ struct Chip8
 		for (std::ifstream f(filepath, std::ios::binary); f.good();)
 			Mem[pos++ & 0xFFF] = f.get();
 	}
+
+	void RenderTo(Uint32 *pixels) 
+	{
+		for (unsigned pos = 0; pos < W*H; pos++)
+			pixels[pos] = 0xFFFFFF * ((DispMem[pos / 8] >> (7 - pos % 8)) & 1);
+	}
 };
 
 int main(int argc, char** argv)
@@ -130,7 +136,18 @@ int main(int argc, char** argv)
 	bool interrupted = false;
 	while (!interrupted) 
 	{
-	
+		//Execute CPU instructions
+		//for (...)
+			cpu.ExecIns();
+		//Handle Input
+		for (SDL_Event ev; SDL_PollEvent(&ev); )
+		{
+		}
+		//Render graphics
+		Uint32 pixels[W*H]; cpu.RenderTo(pixels);
+		SDL_UpdateTexture(texture, nullptr, pixels, 4*W);
+		SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+		SDL_RenderPresent(renderer);
 	}
 
 	SDL_Quit();
