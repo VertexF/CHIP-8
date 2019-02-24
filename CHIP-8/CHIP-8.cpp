@@ -143,6 +143,9 @@ int main(int argc, char** argv)
 		{SDLK_5, 0x5}, {SDLK_6, 0x6}, {SDLK_7, 0x7}, 
 		{SDLK_1, 0x1}, {SDLK_8, 0x8}, {SDLK_9, 0x9}, {SDLK_ESCAPE, -1}
 	};
+	//This is how many instructions it can read per-frame.
+	unsigned insns_per_frame = 5000;
+	unsigned max_consecutive_insns = 0;
 	int frameDone = 0;
 	bool interrupted = false;
 
@@ -150,7 +153,11 @@ int main(int argc, char** argv)
 	while (!interrupted) 
 	{
 		//Execute CPU instructions
-		//for (...)
+		/**The CPU will be waiting for 2 things:
+			1: for the max_consecutive_insus
+			2: the program is waiting for a key press.
+		*/
+		for (unsigned a=0; a < max_consecutive_insns && !(cpu.WaitingKey & 0x80); a++)
 			cpu.ExecIns();
 		//Handle Input
 		for (SDL_Event ev; SDL_PollEvent(&ev); )
@@ -177,12 +184,20 @@ int main(int argc, char** argv)
 		int frames = int(elapsed_seconds.count() * 60) - frameDone;
 		if (frames < 0)
 		{
+			frameDone += frames;
+			//Update the time registers
+			int st = std::min(frames, cpu.SoundTimer + 0); cpu.SoundTimer -= st;
+			int dt = std::min(frames, cpu.DelayTimer + 0); cpu.DelayTimer -= dt;
 			//Render graphics
 			Uint32 pixels[W*H]; cpu.RenderTo(pixels);
 			SDL_UpdateTexture(texture, nullptr, pixels, 4 * W);
 			SDL_RenderCopy(renderer, texture, nullptr, nullptr);
 			SDL_RenderPresent(renderer);
 		}
+		//If for some reason the cpu is still waiting for a key press or a frame we just comsome the CPU timer by 1
+		if ((cpu.WaitingKey & 0x80) || !frames) SDL_Delay(1000 / 60);
+		// Adjust the instruction count to compensate for our rendering speed
+		max_consecutive_insns = std::max(frames, 1) * insns_per_frame;
 	}
 
 	SDL_Quit();
