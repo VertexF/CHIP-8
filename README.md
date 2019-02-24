@@ -5,4 +5,4 @@ This is a CHIP-8 interpreter wrote in more morndern C++. This was simplely a lit
 
 Credits
   Joel/Bistket for teaching me how it all works: https://www.youtube.com/watch?v=rpLoS7B6T94
-  David Winter for writing the documentation: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
+  David Winter for writing the original documentation and other improving it: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
