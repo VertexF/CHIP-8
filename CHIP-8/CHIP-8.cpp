@@ -143,8 +143,10 @@ int main(int argc, char** argv)
 		{SDLK_5, 0x5}, {SDLK_6, 0x6}, {SDLK_7, 0x7}, 
 		{SDLK_1, 0x1}, {SDLK_8, 0x8}, {SDLK_9, 0x9}, {SDLK_ESCAPE, -1}
 	};
-
+	int frameDone = 0;
 	bool interrupted = false;
+
+	auto start = std::chrono::system_clock::now();
 	while (!interrupted) 
 	{
 		//Execute CPU instructions
@@ -169,11 +171,18 @@ int main(int argc, char** argv)
 				}
 			}
 		}
-		//Render graphics
-		Uint32 pixels[W*H]; cpu.RenderTo(pixels);
-		SDL_UpdateTexture(texture, nullptr, pixels, 4*W);
-		SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-		SDL_RenderPresent(renderer);
+		//Here we are checking to see how many pixels should of been rendered so far.
+		auto cur = std::chrono::system_clock::now();
+		std::chrono::duration<double> elapsed_seconds = cur - start;
+		int frames = int(elapsed_seconds.count() * 60) - frameDone;
+		if (frames < 0)
+		{
+			//Render graphics
+			Uint32 pixels[W*H]; cpu.RenderTo(pixels);
+			SDL_UpdateTexture(texture, nullptr, pixels, 4 * W);
+			SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+			SDL_RenderPresent(renderer);
+		}
 	}
 
 	SDL_Quit();
